@@ -24,7 +24,23 @@ const requestLimiters: Record<Plan, Ratelimit> = {
   }),
 };
 
-export const utcDay = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
+// Coarse per-network limit for anonymous abuse (cookie churn, scripts). It
+// runs before the per-user limit, because a user id is only as stable as the
+// thing that issues it.
+const networkLimiter = new Ratelimit({
+  redis,
+  prefix: `${PREFIX}:rl:net`,
+  limiter: Ratelimit.slidingWindow(30, "1 m"),
+  timeout: 1_500,
+});
+
+/** Client network key from trusted platform headers; IPv6 keyed on its /64. */
+export function networkKey(headers: Headers): string {
+  const ip = headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  return ip.includes(":") ? `ip6:${ip.split(":").slice(0, 4).join(":")}` : `ip4:${ip}`;
+}
+
+export const utcDay =(now = Date.now()) => new Date(now).toISOString().slice(0, 10);
 
 export function keysFor(userId: string, day = utcDay()) {
   return {
@@ -75,12 +91,22 @@ export async function admitChat(opts: {
   userId: string;
   plan: Plan;
   estimatedInputTokens: number;
+  /** From networkKey(); omit to skip the network limit. */
+  network?: string;
 }): Promise<{ ok: true; lease: Lease; headers: Record<string, string> } | Refusal> {
   const plan = PLANS[opts.plan];
 
-  // Layer 1: request rate. Cheap, and it sheds bursts before any other work.
+  // Layer 1: request rate, per network then per user. Cheap, and it sheds
+  // bursts before any other work.
   let rl;
   try {
+    if (opts.network) {
+      const net = await networkLimiter.limit(opts.network);
+      if (net.reason === "timeout") throw new Error("ratelimit timeout");
+      if (!net.success) {
+        return { ok: false, status: 429, reason: "rate_limited", message: "Too many requests from your network. Slow down a little.", retryAfterSeconds: secondsUntil(net.reset) };
+      }
+    }
     rl = await requestLimiters[opts.plan].limit(opts.userId);
   } catch {
     rl = null;

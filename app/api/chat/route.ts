@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { admitChat, refusalResponse } from "@/lib/guard";
+import { admitChat, networkKey, refusalResponse } from "@/lib/guard";
 import { estimateInputTokens, trimHistory } from "@/lib/estimate";
 import { currentUser } from "@/lib/identity";
 import { modelFor } from "@/lib/model";
@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     userId,
     plan,
     estimatedInputTokens: estimateInputTokens(messages, SYSTEM),
+    network: networkKey(req.headers),
   });
   if (!admission.ok) return refusalResponse(admission);
   const { lease, headers } = admission;

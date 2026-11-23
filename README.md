@@ -11,6 +11,8 @@ A streaming AI chat route in Next.js 16, guarded so that no single user, and no 
 
 Layers two to four run as one Lua script, so admission is one Redis round trip and either takes everything or changes nothing.
 
+**Live demo:** [ai-cost-guard.devya.dev](https://ai-cost-guard.devya.dev) (mock model, real guards, Cloudflare Workers + Upstash Redis). Open it in two tabs and send a message in both, or press *Fire 3 requests at once*.
+
 Written for the article *Building Production-Ready AI Apps with Next.js and Upstash Redis: Rate Limiting, Cost Control, and Scalability* by [Ahmed Mahmoud](https://www.eng-ahmed.com).
 
 ![The demo: a chat on the left, the guard panel on the right, three burst requests refused with 429 too_many_streams](docs/screenshot.png)
@@ -31,6 +33,11 @@ Get a free database from the [Upstash console](https://console.upstash.com/?utm_
 docker compose up -d
 UPSTASH_REDIS_REST_URL=http://localhost:8079 UPSTASH_REDIS_REST_TOKEN=local_token pnpm dev
 ```
+
+## Deploy
+
+- **Vercel:** import the repo, add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (or install the Upstash integration). `vercel.json` already enables `supportsCancellation` on the chat route.
+- **Cloudflare Workers** (how the live demo runs): `pnpm cf:deploy` builds with [OpenNext](https://opennext.js.org/cloudflare) and deploys `wrangler.jsonc`. Set the two secrets with `wrangler secret put`. The `enable_request_signal` compatibility flag is what makes a client disconnect reach `req.signal`, so aborts stop the model call.
 
 ## Where things are
 
